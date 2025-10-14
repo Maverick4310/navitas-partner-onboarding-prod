@@ -1,12 +1,12 @@
 /**
  * index.js
  * --------------------------------------------------------
- * Navitas Partner Onboarding Proxy (Sandbox)
+ * Navitas Partner Onboarding Proxy (Production)
  * --------------------------------------------------------
  * Purpose:
- *  - Receives partner onboarding JSON payloads
- *  - Forwards them to Salesforce Apex REST endpoint
- *  - Provides website legitimacy verification service (IP2WHOIS)
+ *  - Route partner onboarding and verification calls
+ *  - Forward selected routes to Salesforce Apex REST endpoints
+ *  - Handle internal logic (e.g., /verifyWebsite) locally
  * --------------------------------------------------------
  */
 
@@ -17,6 +17,8 @@ const { forwardToSalesforce } = require('./src/services/salesforceProxy');
 const { verifyWebsiteHandler } = require('./src/services/websiteVerifier');
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+const MODE = process.env.MODE || 'unknown';
 
 // === Middleware ===
 app.use(cors());
@@ -24,21 +26,39 @@ app.use(bodyParser.json({ limit: '5mb' }));
 
 // === Health check ===
 app.get('/ping', (req, res) => {
-  res
-    .status(200)
-    .send(`Partner Onboarding Proxy is live in ${process.env.MODE || 'unknown'} mode`);
+  res.status(200).send(`Partner Onboarding Proxy is live in ${MODE} mode`);
 });
 
-// === Partner Onboarding endpoint ===
-app.post('/onboarding', forwardToSalesforce);
+// ----------------------------------------------------------
+// 🔹 ROUTE DEFINITIONS (Future-proof, centralized mapping)
+// ----------------------------------------------------------
 
-// === Website Verification endpoint (IP2WHOIS) ===
+// === 1) Partner Onboarding ===
+// External caller POSTs to /onboarding
+// → forwards to Salesforce Apex REST: /newpartner
+app.post('/onboarding', (req, res) => {
+  req.url = '/newpartner';
+  forwardToSalesforce(req, res);
+});
+
+// === 2) Website Verification ===
+// Salesforce calls this internally to perform fraud checks
 app.post('/verifyWebsite', verifyWebsiteHandler);
 
-// === Start server ===
-const PORT = process.env.PORT || 3000;
+// === 3) (Example Future Endpoints) ===
+// app.post('/updatePartner', (req, res) => {
+//   req.url = '/updatepartner';
+//   forwardToSalesforce(req, res);
+// });
+
+// app.post('/fetchDocuments', (req, res) => {
+//   req.url = '/fetchdocs';
+//   forwardToSalesforce(req, res);
+// });
+
+// ----------------------------------------------------------
+// Start server
+// ----------------------------------------------------------
 app.listen(PORT, () => {
-  console.log(
-    `🚀 Navitas Partner Onboarding Proxy (${process.env.MODE}) running on port ${PORT}`
-  );
+  console.log(`🚀 Navitas Partner Onboarding Proxy (${MODE}) running on port ${PORT}`);
 });
