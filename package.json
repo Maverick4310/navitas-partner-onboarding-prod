@@ -1,7 +1,7 @@
 {
-  "name": "navitas-partner-onboarding-prod",
+  "name": "navitas-partner-onboarding-proxy", 
   "version": "1.0.0",
-  "description": "Proxy service for forwarding partner onboarding requests to Salesforce.",
+  "description": "Proxy for forwarding partner onboarding requests to Salesforce.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -11,6 +11,7 @@
     "axios": "^1.7.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "express": "^4.19.0"
+    "express": "^4.19.0",
+    "whois-json": "^2.0.3"
   }
 }
