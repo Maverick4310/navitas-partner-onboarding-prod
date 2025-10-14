@@ -3,8 +3,8 @@
  * --------------------------------------------------------
  * Purpose:
  *  - Forward requests from Render to Salesforce Apex REST endpoints
- *  - Use TARGET_SF_URL environment variable for destination base path
- *  - Provide detailed logging of which service was called, duration, and status
+ *  - Use TARGET_SF_URL environment variable as base path
+ *  - Map external routes (e.g., /onboarding) to Apex REST paths (e.g., /newpartner)
  * --------------------------------------------------------
  */
 
@@ -24,8 +24,19 @@ async function forwardToSalesforce(req, res) {
       return res.status(500).json({ error: true, message: 'Missing TARGET_SF_URL environment variable.' });
     }
 
-    // === Build target Salesforce URL safely ===
-    const targetUrl = `${baseUrl.replace(/\/$/, '')}${path.startsWith('/') ? '' : '/'}${path.replace(/^\/+/, '')}`;
+    // === Map incoming paths to Salesforce endpoints ===
+    const routeMap = {
+      '/onboarding': '/newpartner',
+      '/verifyWebsite': '/verifyWebsite'
+    };
+
+    // Determine which Apex REST path to hit
+    const sfSubPath = routeMap[path] || path;
+
+    // === Join base + subpath safely ===
+    let base = baseUrl.replace(/\/+$/, '');
+    let tail = sfSubPath.replace(/^\/+/, '');
+    const targetUrl = `${base}/${tail}`;
 
     console.log(`[${mode}] [${method} ${path}] → Forwarding to Salesforce: ${targetUrl}`);
 
@@ -43,7 +54,7 @@ async function forwardToSalesforce(req, res) {
     const duration = ((Date.now() - start) / 1000).toFixed(2);
     console.log(`[${mode}] [${method} ${path}] ✅ Success (${duration}s) → Status ${sfResponse.status}`);
 
-    // Optional: log response keys for traceability
+    // Optional: log top-level keys from SF response
     if (sfResponse.data && typeof sfResponse.data === 'object') {
       const keys = Object.keys(sfResponse.data);
       console.log(`[${mode}] [${method} ${path}] Salesforce response keys: ${keys.join(', ')}`);
