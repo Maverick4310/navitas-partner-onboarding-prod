@@ -1,49 +1,68 @@
 /**
  * salesforceProxy.js
  * --------------------------------------------------------
- * Generic forwarder to Salesforce REST endpoint.
- * Uses environment variables:
- *   - TARGET_SF_URL  : Salesforce endpoint (production)
- *   - MODE            : 'partner-onboarding-prod'
+ * Purpose:
+ *  - Forward requests from Render to Salesforce Named Credential
+ *  - Log which service is being called, how long it took, and status
  * --------------------------------------------------------
  */
 
 const axios = require('axios');
 
 async function forwardToSalesforce(req, res) {
-  const targetUrl = process.env.TARGET_SF_URL;
-
-  if (!targetUrl) {
-    return res.status(500).json({ error: 'Missing TARGET_SF_URL environment variable.' });
-  }
+  const start = Date.now();
+  const mode = process.env.MODE || 'unknown';
+  const path = req.originalUrl || req.url;
+  const method = req.method;
+  const namedCredential = process.env.SF_NAMED_CRED || 'PartnerOnboardingAPI';
 
   try {
-    const start = Date.now();
+    // Log entry
+    console.log(`[${mode}] [${method} ${path}] → Forwarding to Salesforce...`);
 
-    const sfResponse = await axios.post(targetUrl, req.body, {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 25000
+    // Build Salesforce request
+    const targetUrl = `${process.env.SALESFORCE_BASE_URL || ''}${path}`;
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
+    };
+
+    // Make callout to Salesforce
+    const sfResponse = await axios({
+      method,
+      url: targetUrl,
+      headers,
+      data: req.body,
+      timeout: 20000,
     });
 
-    const elapsed = ((Date.now() - start) / 1000).toFixed(2);
-    console.log(`[${new Date().toISOString()}] [${process.env.MODE}] Forwarded to SF (${elapsed}s) → Status ${sfResponse.status}`);
+    const duration = ((Date.now() - start) / 1000).toFixed(2);
 
-    return res.status(sfResponse.status).send(sfResponse.data);
+    // Log details
+    console.log(
+      `[${mode}] [${method} ${path}] → Forwarded to Salesforce: ${targetUrl} (${duration}s) → Status ${sfResponse.status}`
+    );
 
-  } catch (error) {
-    console.error(`[ERROR ${new Date().toISOString()}] Salesforce proxy failed: ${error.message}`);
-
-    if (error.response) {
-      return res.status(error.response.status).json({
-        message: 'Salesforce responded with an error',
-        status: error.response.status,
-        data: error.response.data
-      });
-    } else if (error.request) {
-      return res.status(504).json({ message: 'No response from Salesforce endpoint (timeout or network issue).' });
-    } else {
-      return res.status(500).json({ message: 'Internal proxy error.', detail: error.message });
+    // Optionally log payload summary
+    if (req.body && Object.keys(req.body).length > 0) {
+      console.log(
+        `[${mode}] [${method} ${path}] Payload keys: ${Object.keys(req.body).join(', ')}`
+      );
     }
+
+    return res.status(sfResponse.status).json(sfResponse.data);
+  } catch (error) {
+    const duration = ((Date.now() - start) / 1000).toFixed(2);
+    const status = error.response ? error.response.status : 'ERR';
+    console.error(
+      `[${mode}] [${method} ${path}] ❌ Forward to Salesforce failed (${duration}s) → ${status} :: ${error.message}`
+    );
+
+    return res.status(status === 'ERR' ? 500 : status).json({
+      error: true,
+      message: error.message,
+      details: error.response?.data || null,
+    });
   }
 }
 
