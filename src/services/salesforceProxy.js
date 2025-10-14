@@ -2,8 +2,9 @@
  * salesforceProxy.js
  * --------------------------------------------------------
  * Purpose:
- *  - Forward requests from Render to Salesforce Named Credential
- *  - Log which service is being called, how long it took, and status
+ *  - Forward requests from Render to Salesforce Apex REST endpoints
+ *  - Use TARGET_SF_URL environment variable for destination base path
+ *  - Provide detailed logging of which service was called, duration, and status
  * --------------------------------------------------------
  */
 
@@ -12,50 +13,49 @@ const axios = require('axios');
 async function forwardToSalesforce(req, res) {
   const start = Date.now();
   const mode = process.env.MODE || 'unknown';
-  const path = req.originalUrl || req.url;
   const method = req.method;
-  const namedCredential = process.env.SF_NAMED_CRED || 'PartnerOnboardingAPI';
+  const path = req.originalUrl || req.url;
+  const baseUrl = process.env.TARGET_SF_URL;
 
   try {
-    // Log entry
-    console.log(`[${mode}] [${method} ${path}] → Forwarding to Salesforce...`);
+    // === Validate target environment variable ===
+    if (!baseUrl) {
+      console.error(`[${mode}] ❌ TARGET_SF_URL not configured.`);
+      return res.status(500).json({ error: true, message: 'Missing TARGET_SF_URL environment variable.' });
+    }
 
-    // Build Salesforce request
-    const targetUrl = `${process.env.SALESFORCE_BASE_URL || ''}${path}`;
-    const headers = {
-      'Content-Type': 'application/json',
-      ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
-    };
+    // === Build target Salesforce URL safely ===
+    const targetUrl = `${baseUrl.replace(/\/$/, '')}${path.startsWith('/') ? '' : '/'}${path.replace(/^\/+/, '')}`;
 
-    // Make callout to Salesforce
+    console.log(`[${mode}] [${method} ${path}] → Forwarding to Salesforce: ${targetUrl}`);
+
+    // === Perform the HTTP request ===
     const sfResponse = await axios({
       method,
       url: targetUrl,
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+      },
       data: req.body,
       timeout: 20000,
     });
 
     const duration = ((Date.now() - start) / 1000).toFixed(2);
+    console.log(`[${mode}] [${method} ${path}] ✅ Success (${duration}s) → Status ${sfResponse.status}`);
 
-    // Log details
-    console.log(
-      `[${mode}] [${method} ${path}] → Forwarded to Salesforce: ${targetUrl} (${duration}s) → Status ${sfResponse.status}`
-    );
-
-    // Optionally log payload summary
-    if (req.body && Object.keys(req.body).length > 0) {
-      console.log(
-        `[${mode}] [${method} ${path}] Payload keys: ${Object.keys(req.body).join(', ')}`
-      );
+    // Optional: log response keys for traceability
+    if (sfResponse.data && typeof sfResponse.data === 'object') {
+      const keys = Object.keys(sfResponse.data);
+      console.log(`[${mode}] [${method} ${path}] Salesforce response keys: ${keys.join(', ')}`);
     }
 
     return res.status(sfResponse.status).json(sfResponse.data);
+
   } catch (error) {
     const duration = ((Date.now() - start) / 1000).toFixed(2);
     const status = error.response ? error.response.status : 'ERR';
     console.error(
-      `[${mode}] [${method} ${path}] ❌ Forward to Salesforce failed (${duration}s) → ${status} :: ${error.message}`
+      `[${mode}] [${method} ${path}] ❌ Forward failed (${duration}s) → ${status} :: ${error.message}`
     );
 
     return res.status(status === 'ERR' ? 500 : status).json({
