@@ -15,6 +15,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const { forwardToSalesforce } = require('./src/services/salesforceProxy');
 const { verifyWebsiteHandler } = require('./src/services/websiteVerifier');
+const { verifyEmailHandler } = require('./src/services/emailVerifier'); // 🆕 Add this line
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -44,6 +45,9 @@ app.post('/onboarding', (req, res) => {
 // === 2) Website Verification ===
 // Salesforce calls this internally to perform fraud checks
 app.post('/verifyWebsite', verifyWebsiteHandler);
+
+// === Email Verification endpoint (EmailRep + IP2WHOIS) ===
+app.post('/verifyEmail', verifyEmailHandler);
 
 // === 3) (Example Future Endpoints) ===
 // app.post('/updatePartner', (req, res) => {
